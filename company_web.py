@@ -137,7 +137,7 @@ def api_query():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"伺服器錯誤：{e}"}), 500
+        return jsonify({"error": f"伺服器錯誤：{type(e).__name__}: {e}"}), 500
 
 def _do_query(q):
     result = {"query": q, "company": None, "factories": []}
