@@ -423,14 +423,16 @@ def index():
 # ─── 啟動 ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import webbrowser, threading
-    def open_browser():
-        time.sleep(1.2)
-        webbrowser.open("http://localhost:5000")
-    threading.Thread(target=open_browser, daemon=True).start()
-    print("=" * 50)
-    print("  台灣公司查詢網頁已啟動！")
-    print("  請在瀏覽器開啟: http://localhost:5000")
-    print("  按 Ctrl+C 可停止程式")
-    print("=" * 50)
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    import os, webbrowser, threading
+    port = int(os.environ.get("PORT", 5000))
+    if port == 5000:
+        def open_browser():
+            time.sleep(1.2)
+            webbrowser.open(f"http://localhost:{port}")
+        threading.Thread(target=open_browser, daemon=True).start()
+        print("=" * 50)
+        print("  台灣公司查詢網頁已啟動！")
+        print(f"  請在瀏覽器開啟: http://localhost:{port}")
+        print("  按 Ctrl+C 可停止程式")
+        print("=" * 50)
+    app.run(host="0.0.0.0", port=port, debug=False)
