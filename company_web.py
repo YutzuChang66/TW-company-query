@@ -57,7 +57,9 @@ def get_company(tax_id):
         raw = _get(url)
         data = json.loads(raw) if raw.strip() else []
         return data[0] if data else None
-    except: return None
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return None
 
 # ─── 工廠公示資料系統 ─────────────────────────────────────────────────────────
 
