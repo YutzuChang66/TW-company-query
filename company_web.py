@@ -132,7 +132,14 @@ def api_query():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"error": "請輸入查詢內容"}), 400
+    try:
+        return _do_query(q)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"伺服器錯誤：{e}"}), 500
 
+def _do_query(q):
     result = {"query": q, "company": None, "factories": []}
 
     # 判斷輸入類型
