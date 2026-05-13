@@ -5,8 +5,13 @@
 執行後在瀏覽器開啟 http://localhost:5000
 """
 
-import re, json, time, urllib.parse, urllib.request
+import re, json, time, ssl, urllib.parse, urllib.request
 from http.cookiejar import CookieJar
+
+# serv.gcis.nat.gov.tw 的 SSL 憑證缺少 Subject Key Identifier，需略過驗證
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
 from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
@@ -62,7 +67,10 @@ FDETAIL = "https://serv.gcis.nat.gov.tw/Fidbweb/factInfoAction.do"
 
 def _opener_csrf():
     jar = CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(jar),
+        urllib.request.HTTPSHandler(context=_SSL_CTX),
+    )
     req = urllib.request.Request(f"{FSEARCH}?method=qryCount", headers=HEADERS)
     with opener.open(req, timeout=15) as r:
         html = r.read().decode("utf-8")
