@@ -189,7 +189,13 @@ def _do_query(q):
                     result["company"] = get_company(d["company_tax_id"])
                 result["query_type"] = "factory_regi_id"
             else:
-                return jsonify({"error": f"找不到 '{q}' 的相關資料"}), 404
+                return jsonify({"error": (
+                    f"找不到統一編號 '{q}' 的資料。\n"
+                    "可能原因：\n"
+                    "• 此為合作社、商業行號或有限合夥，非公司登記\n"
+                    "• 公司已解散或撤銷\n\n"
+                    f"請至 findbiz.nat.gov.tw 以統一編號搜尋查看完整資料。"
+                )}), 404
 
     else:
         # 公司/工廠名稱
@@ -343,7 +349,7 @@ function badges(text, cls) {
 function renderResult(data) {
   if (data.error) {
     document.getElementById('result').innerHTML =
-      `<div class="error-box">❌ ${data.error}</div>`;
+      `<div class="error-box">❌ ${data.error.replace('findbiz.nat.gov.tw', '<a href="https://findbiz.nat.gov.tw" target="_blank" style="color:#c53030">findbiz.nat.gov.tw</a>')}</div>`;
     return;
   }
 
