@@ -185,9 +185,6 @@ def _do_query(q):
         else:
             # 試工廠登記編號（純數字8碼也可能是工廠編號）
             facs = search_factories(regi_id=q)
-            if not facs:
-                # 再試用統一編號直接查工廠系統（合作社、商業行號等）
-                facs = search_factories(ban_no=q, timeout=10)
             if facs:
                 for f in facs[:10]:
                     d = get_factory_detail(f["estbid"], f["agency"])
