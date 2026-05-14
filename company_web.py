@@ -27,13 +27,13 @@ def _get(url):
     with urllib.request.urlopen(req, timeout=15) as r:
         return r.read().decode("utf-8")
 
-def _post(url, data, opener):
+def _post(url, data, opener, timeout=15):
     encoded = urllib.parse.urlencode(data).encode()
     req = urllib.request.Request(
         url, data=encoded,
         headers={**HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
     )
-    with opener.open(req, timeout=15) as r:
+    with opener.open(req, timeout=timeout) as r:
         return r.read().decode("utf-8")
 
 def _strip(html):
@@ -78,16 +78,20 @@ def _opener_csrf():
     m = re.search(r'name="csrfPreventionSalthidden".*?value="([^"]+)"', html, re.DOTALL)
     return opener, (m.group(1) if m else "")
 
-def search_factories(name="", regi_id=""):
+def search_factories(name="", regi_id="", ban_no="", timeout=15):
     opener, csrf = _opener_csrf()
     if not csrf: return []
-    html = _post(FSEARCH, {
-        "csrfPreventionSalthidden": csrf, "method": "query",
-        "regiID": regi_id, "estbID": "", "factName": name,
-        "addrCityCode1": "JJ", "addrCityCode2": "JJ", "factAddr": "",
-        "orgCode": "JJ", "statCode": "JJ",
-        "cityCode1": "JJ", "cityCode2": "JJ", "tmp_profitem": "JJ", "ITEM": "",
-    }, opener)
+    try:
+        html = _post(FSEARCH, {
+            "csrfPreventionSalthidden": csrf, "method": "query",
+            "regiID": regi_id, "estbID": "", "factName": name,
+            "banNo": ban_no,
+            "addrCityCode1": "JJ", "addrCityCode2": "JJ", "factAddr": "",
+            "orgCode": "JJ", "statCode": "JJ",
+            "cityCode1": "JJ", "cityCode2": "JJ", "tmp_profitem": "JJ", "ITEM": "",
+        }, opener, timeout=timeout)
+    except Exception:
+        return []
     pat = re.compile(
         r'method=detail&estbid=([^&"]+)&agencyCode=([^"]+)"[^>]*>\s*([^<\s][^<]*?)\s*</a>'
     )
@@ -179,18 +183,23 @@ def _do_query(q):
                 result["factories"].append(f)
                 time.sleep(0.2)
         else:
-            # 試工廠登記編號
+            # 試工廠登記編號（純數字8碼也可能是工廠編號）
             facs = search_factories(regi_id=q)
+            if not facs:
+                # 再試用統一編號直接查工廠系統（合作社、商業行號等）
+                facs = search_factories(ban_no=q, timeout=10)
             if facs:
-                d = get_factory_detail(facs[0]["estbid"], facs[0]["agency"])
-                facs[0].update(d)
-                result["factories"] = [facs[0]]
-                if d.get("company_tax_id"):
-                    result["company"] = get_company(d["company_tax_id"])
-                result["query_type"] = "factory_regi_id"
+                for f in facs[:10]:
+                    d = get_factory_detail(f["estbid"], f["agency"])
+                    f.update(d)
+                    time.sleep(0.2)
+                result["factories"] = facs[:10]
+                if facs[0].get("company_tax_id"):
+                    result["company"] = get_company(facs[0]["company_tax_id"])
+                result["query_type"] = "factory_ban_no"
             else:
                 return jsonify({"error": (
-                    f"找不到統一編號 '{q}' 的公司資料。\n"
+                    f"找不到統一編號 '{q}' 的相關資料。\n"
                     "可能為合作社、商業行號或有限合夥（非公司登記）。\n\n"
                     "💡 建議改用公司或工廠名稱搜尋，\n"
                     "或至 findbiz.nat.gov.tw 查詢完整資料。"
