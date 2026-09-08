@@ -61,6 +61,29 @@ def get_company(tax_id):
         import traceback; traceback.print_exc()
         return None
 
+def get_company_business(tax_id):
+    """從 GCIS 應用三取得所營事業（行業代碼 + 行業別），排除 ZZ 雜項"""
+    url = (f"https://data.gcis.nat.gov.tw/od/data/api/"
+           f"236EE382-4942-41A9-BD03-CA0709025E7C"
+           f"?$format=json&$filter=Business_Accounting_NO%20eq%20{tax_id}&$top=1")
+    try:
+        raw = _get(url)
+        data = json.loads(raw) if raw.strip() else []
+        if data and data[0].get("Cmp_Business"):
+            return [b for b in data[0]["Cmp_Business"]
+                    if b.get("Business_Item_Desc", "").strip()
+                    and not b.get("Business_Item", "").startswith("ZZ")]
+    except Exception:
+        pass
+    return []
+
+def _strip_company_suffix(name):
+    """去除公司名稱中的組織型態後綴，用於工廠名稱搜尋"""
+    for suffix in ["股份有限公司", "有限公司", "股份有限", "有限", "股份"]:
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
 # ─── 工廠公示資料系統 ─────────────────────────────────────────────────────────
 
 FSEARCH = "https://serv.gcis.nat.gov.tw/Fidbweb/factInfoListAction.do"
@@ -168,39 +191,37 @@ def _do_query(q):
             result["factories"] = [facs[0]]
             if d.get("company_tax_id"):
                 result["company"] = get_company(d["company_tax_id"])
+                result["business_items"] = get_company_business(d["company_tax_id"])
         result["query_type"] = "factory_regi_id"
 
     elif is_tax_id:
-        # 統一編號（若查不到公司，改試工廠登記編號）
+        # 統一編號
         company = get_company(q)
         if company:
             result["company"] = company
             result["query_type"] = "tax_id"
-            facs = search_factories(name=company.get("Company_Name", ""))
+            # 同步取得所營事業（行業代碼/行業別）
+            result["business_items"] = get_company_business(q)
+            # 工廠搜尋：先用完整公司名，若無結果再用去掉組織型態的短名
+            company_name = company.get("Company_Name", "")
+            facs = search_factories(name=company_name)
+            if not facs:
+                short_name = _strip_company_suffix(company_name)
+                if short_name and short_name != company_name:
+                    facs = search_factories(name=short_name)
             for f in facs[:10]:
                 d = get_factory_detail(f["estbid"], f["agency"])
                 f.update(d)
                 result["factories"].append(f)
                 time.sleep(0.2)
         else:
-            # 試工廠登記編號（純數字8碼也可能是工廠編號）
-            facs = search_factories(regi_id=q)
-            if facs:
-                for f in facs[:10]:
-                    d = get_factory_detail(f["estbid"], f["agency"])
-                    f.update(d)
-                    time.sleep(0.2)
-                result["factories"] = facs[:10]
-                if facs[0].get("company_tax_id"):
-                    result["company"] = get_company(facs[0]["company_tax_id"])
-                result["query_type"] = "factory_ban_no"
-            else:
-                return jsonify({"error": (
-                    f"找不到統一編號 '{q}' 的相關資料。\n"
-                    "可能為合作社、商業行號或有限合夥（非公司登記）。\n\n"
-                    "💡 建議改用公司或工廠名稱搜尋，\n"
-                    "或至 findbiz.nat.gov.tw 查詢完整資料。"
-                )}), 404
+            # 查無公司登記（可能是合作社、商業行號、有限合夥）
+            return jsonify({"error": (
+                f"找不到統一編號 '{q}' 的相關資料。\n"
+                "可能為合作社、商業行號或有限合夥（非公司登記）。\n\n"
+                "💡 建議改用公司或工廠名稱搜尋，\n"
+                "或至 findbiz.nat.gov.tw 查詢完整資料。"
+            )}), 404
 
     else:
         # 公司/工廠名稱
@@ -213,6 +234,7 @@ def _do_query(q):
         facs[0].update(d0)
         if d0.get("company_tax_id"):
             result["company"] = get_company(d0["company_tax_id"])
+            result["business_items"] = get_company_business(d0["company_tax_id"])
         for f in facs[1:10]:
             d = get_factory_detail(f["estbid"], f["agency"])
             f.update(d)
@@ -297,6 +319,11 @@ HTML = """<!DOCTYPE html>
     padding: 3px 10px; border-radius: 20px; font-size: 0.8rem;
     margin: 3px 3px 0 0;
   }
+  .biz-badge {
+    display: inline-block; background: #fdf4ff; color: #6b21a8;
+    padding: 4px 12px; border-radius: 20px; font-size: 0.82rem;
+    border: 1px solid #e9d5ff; cursor: default;
+  }
 
   .more-note { text-align: center; color: #718096; font-size: 0.85rem;
                padding: 12px; border-top: 1px solid #e2e8f0; margin-top: 4px; }
@@ -351,6 +378,19 @@ function badges(text, cls) {
     .map(s => `<span class="${cls}">${s}</span>`).join('');
 }
 
+function renderBusinessItems(items) {
+  if (!items || !items.length) return '';
+  const badges = items.map(b => {
+    const code = b.Business_Item || '';
+    const desc = b.Business_Item_Desc || '';
+    return `<span class="biz-badge" title="${code}">${desc}</span>`;
+  }).join('');
+  return `<div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
+    <label style="font-size:.78rem;color:#718096;display:block;margin-bottom:6px">所營事業（行業代碼 / 行業別）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${badges}</div>
+  </div>`;
+}
+
 function renderResult(data) {
   if (data.error) {
     document.getElementById('result').innerHTML =
@@ -382,6 +422,7 @@ function renderResult(data) {
           <div class="info-item"><label>核准設立日期</label><span>${fmtDate(c.Company_Setup_Date)}</span></div>
           <div class="info-item"><label>最後變更日期</label><span>${fmtDate(c.Change_Of_Approval_Data)}</span></div>
         </div>
+        ${renderBusinessItems(data.business_items)}
       </div>
     </div>`;
   }
