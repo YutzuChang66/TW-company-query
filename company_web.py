@@ -115,13 +115,22 @@ def search_factories(name="", regi_id="", ban_no="", timeout=15):
         }, opener, timeout=timeout)
     except Exception:
         return []
+    # 允許 <img>（CNS11643 特殊字元會被渲染成圖片），使用 DOTALL
     pat = re.compile(
-        r'method=detail&estbid=([^&"]+)&agencyCode=([^"]+)"[^>]*>\s*([^<\s][^<]*?)\s*</a>'
+        r'method=detail&estbid=([^&"]+)&agencyCode=([^"]+)"[^>]*>(.*?)</a>',
+        re.DOTALL
     )
+
+    def _link_text(raw):
+        # 移除 CNS11643 圖片（保留周圍文字）
+        raw = re.sub(r"<img[^>]*/?>", "", raw, flags=re.DOTALL)
+        return _strip(raw)
+
     pairs, items = [], list(pat.finditer(html))
     i = 0
     while i < len(items) - 1:
-        t1, t2 = items[i].group(3).strip(), items[i+1].group(3).strip()
+        t1 = _link_text(items[i].group(3))
+        t2 = _link_text(items[i+1].group(3))
         e1, e2 = items[i].group(1), items[i+1].group(1)
         if e1 == e2:
             regi = t1 if re.match(r"^[A-Z0-9]{6,}", t1) else t2
