@@ -61,6 +61,18 @@ def get_company(tax_id):
         import traceback; traceback.print_exc()
         return None
 
+def get_subsidy_record(tax_id):
+    """查詢經濟部產業競爭力輔導團 補助申請紀錄"""
+    url = f"https://eii.nat.gov.tw/moeai-plus/api/v1/companies/{tax_id}"
+    try:
+        raw = _get(url)
+        data = json.loads(raw)
+        if data.get("data"):
+            return {"has_record": True, "message": data["data"].get("message", "已有申請紀錄")}
+        return {"has_record": False, "message": data.get("messages", {}).get("error", "尚無申請紀錄")}
+    except Exception:
+        return {"has_record": False, "message": "查詢失敗"}
+
 def get_company_business(tax_id):
     """從 GCIS 應用三取得所營事業（行業代碼 + 行業別），排除 ZZ 雜項"""
     url = (f"https://data.gcis.nat.gov.tw/od/data/api/"
@@ -201,6 +213,7 @@ def _do_query(q):
             if d.get("company_tax_id"):
                 result["company"] = get_company(d["company_tax_id"])
                 result["business_items"] = get_company_business(d["company_tax_id"])
+                result["subsidy"] = get_subsidy_record(d["company_tax_id"])
         result["query_type"] = "factory_regi_id"
 
     elif is_tax_id:
@@ -211,6 +224,7 @@ def _do_query(q):
             result["query_type"] = "tax_id"
             # 同步取得所營事業（行業代碼/行業別）
             result["business_items"] = get_company_business(q)
+            result["subsidy"] = get_subsidy_record(q)
             # 工廠搜尋：先用完整公司名，若無結果再用去掉組織型態的短名
             company_name = company.get("Company_Name", "")
             facs = search_factories(name=company_name)
@@ -244,6 +258,7 @@ def _do_query(q):
         if d0.get("company_tax_id"):
             result["company"] = get_company(d0["company_tax_id"])
             result["business_items"] = get_company_business(d0["company_tax_id"])
+            result["subsidy"] = get_subsidy_record(d0["company_tax_id"])
         for f in facs[1:10]:
             d = get_factory_detail(f["estbid"], f["agency"])
             f.update(d)
@@ -333,6 +348,16 @@ HTML = """<!DOCTYPE html>
     padding: 4px 12px; border-radius: 20px; font-size: 0.82rem;
     border: 1px solid #e9d5ff; cursor: default;
   }
+  .biz-list { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 20px; }
+  .biz-list li { font-size: 0.88rem; padding: 3px 0; color: #374151; break-inside: avoid; }
+  .biz-list li .biz-code { color: #6b21a8; font-weight: 600; margin-right: 6px; font-size: 0.82rem; }
+  .subsidy-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 8px; font-size: 0.95rem; font-weight: 600;
+  }
+  .subsidy-badge.has { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  .subsidy-badge.none { background: #f9fafb; color: #6b7280; border: 1px solid #e5e7eb; }
+  .card-header.purple { background: #faf5ff; color: #6b21a8; border-bottom: 2px solid #e9d5ff; }
 
   .more-note { text-align: center; color: #718096; font-size: 0.85rem;
                padding: 12px; border-top: 1px solid #e2e8f0; margin-top: 4px; }
@@ -389,14 +414,29 @@ function badges(text, cls) {
 
 function renderBusinessItems(items) {
   if (!items || !items.length) return '';
-  const badges = items.map(b => {
+  const rows = items.map(b => {
     const code = b.Business_Item || '';
     const desc = b.Business_Item_Desc || '';
-    return `<span class="biz-badge" title="${code}">${desc}</span>`;
+    return `<li><span class="biz-code">${code}</span>${desc}</li>`;
   }).join('');
   return `<div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
-    <label style="font-size:.78rem;color:#718096;display:block;margin-bottom:6px">所營事業（行業代碼 / 行業別）</label>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${badges}</div>
+    <label style="font-size:.78rem;color:#718096;display:block;margin-bottom:8px">所營事業資料</label>
+    <ul class="biz-list">${rows}</ul>
+  </div>`;
+}
+
+function renderSubsidy(subsidy) {
+  if (!subsidy) return '';
+  const cls  = subsidy.has_record ? 'has' : 'none';
+  const icon = subsidy.has_record ? '✅' : '—';
+  return `
+  <div class="card">
+    <div class="card-header purple">📋 補助申請查詢（經濟部產業競爭力輔導團）</div>
+    <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span class="subsidy-badge ${cls}">${icon} ${subsidy.message}</span>
+      <a href="https://eii.nat.gov.tw/moeai-plus/" target="_blank"
+         style="font-size:.85rem;color:#1a56db;text-decoration:underline">前往查詢詳細申請記錄 →</a>
+    </div>
   </div>`;
 }
 
@@ -476,6 +516,8 @@ function renderResult(data) {
       </div>
     </div>`;
   }
+
+  html += renderSubsidy(data.subsidy);
 
   document.getElementById('result').innerHTML = html;
 }
