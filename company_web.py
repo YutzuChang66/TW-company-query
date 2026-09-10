@@ -63,6 +63,7 @@ def get_company(tax_id):
 
 def get_subsidy_record(tax_id):
     """查詢經濟部產業競爭力輔導團 補助申請紀錄"""
+    import urllib.error
     url = f"https://eii.nat.gov.tw/moeai-plus/api/v1/companies/{tax_id}"
     try:
         raw = _get(url)
@@ -70,6 +71,12 @@ def get_subsidy_record(tax_id):
         if data.get("data"):
             return {"has_record": True, "message": data["data"].get("message", "已有申請紀錄")}
         return {"has_record": False, "message": data.get("messages", {}).get("error", "尚無申請紀錄")}
+    except urllib.error.HTTPError as e:
+        try:
+            data = json.loads(e.read().decode("utf-8"))
+            return {"has_record": False, "message": data.get("messages", {}).get("error", "尚無申請紀錄")}
+        except Exception:
+            return {"has_record": False, "message": "尚無申請紀錄"}
     except Exception:
         return {"has_record": False, "message": "查詢失敗"}
 
