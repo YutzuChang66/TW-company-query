@@ -415,9 +415,8 @@ function badges(text, cls) {
 function renderBusinessItems(items) {
   if (!items || !items.length) return '';
   const rows = items.map(b => {
-    const code = b.Business_Item || '';
     const desc = b.Business_Item_Desc || '';
-    return `<li><span class="biz-code">${code}</span>${desc}</li>`;
+    return `<li>${desc}</li>`;
   }).join('');
   return `<div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
     <label style="font-size:.78rem;color:#718096;display:block;margin-bottom:8px">所營事業資料</label>
