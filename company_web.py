@@ -65,8 +65,17 @@ def get_subsidy_record(tax_id):
     """查詢經濟部產業競爭力輔導團 補助申請紀錄"""
     import urllib.error
     url = f"https://eii.nat.gov.tw/moeai-plus/api/v1/companies/{tax_id}"
+    headers = {
+        **HEADERS,
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Referer": "https://eii.nat.gov.tw/moeai-plus/",
+        "Origin": "https://eii.nat.gov.tw",
+        "X-Requested-With": "XMLHttpRequest",
+    }
     try:
-        raw = _get(url)
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            raw = r.read().decode("utf-8")
         data = json.loads(raw)
         if data.get("data"):
             return {"has_record": True, "message": data["data"].get("message", "已有申請紀錄")}
